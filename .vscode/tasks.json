@@ -1,0 +1,326 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Scenegram: Build Debug",
+      "type": "shell",
+      "command": ".\\gradlew.bat",
+      "args": [
+        ":app:assembleDebug",
+        "--console=plain"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "JAVA_HOME": "C:\\Program Files\\Microsoft\\jdk-17.0.20.101-hotspot",
+          "GRADLE_USER_HOME": "${workspaceFolder}\\.gradle-user",
+          "ANDROID_HOME": "C:\\Users\\Tyler\\AppData\\Local\\Android\\Sdk",
+          "ANDROID_SDK_ROOT": "C:\\Users\\Tyler\\AppData\\Local\\Android\\Sdk"
+        }
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "Scenegram: Unit Test",
+      "type": "shell",
+      "command": ".\\gradlew.bat",
+      "args": [
+        ":app:testDebugUnitTest",
+        "--console=plain"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "JAVA_HOME": "C:\\Program Files\\Microsoft\\jdk-17.0.20.101-hotspot",
+          "GRADLE_USER_HOME": "${workspaceFolder}\\.gradle-user",
+          "ANDROID_HOME": "C:\\Users\\Tyler\\AppData\\Local\\Android\\Sdk",
+          "ANDROID_SDK_ROOT": "C:\\Users\\Tyler\\AppData\\Local\\Android\\Sdk"
+        }
+      },
+      "group": "test",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "Scenegram: Lint Debug",
+      "type": "shell",
+      "command": ".\\gradlew.bat",
+      "args": [
+        ":app:lintDebug",
+        "--console=plain"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "JAVA_HOME": "C:\\Program Files\\Microsoft\\jdk-17.0.20.101-hotspot",
+          "GRADLE_USER_HOME": "${workspaceFolder}\\.gradle-user",
+          "ANDROID_HOME": "C:\\Users\\Tyler\\AppData\\Local\\Android\\Sdk",
+          "ANDROID_SDK_ROOT": "C:\\Users\\Tyler\\AppData\\Local\\Android\\Sdk"
+        }
+      },
+      "group": "test",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "Scenegram: Install Debug",
+      "type": "shell",
+      "command": ".\\gradlew.bat",
+      "args": [
+        ":app:installDebug",
+        "--console=plain"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "JAVA_HOME": "C:\\Program Files\\Microsoft\\jdk-17.0.20.101-hotspot",
+          "GRADLE_USER_HOME": "${workspaceFolder}\\.gradle-user",
+          "ANDROID_HOME": "C:\\Users\\Tyler\\AppData\\Local\\Android\\Sdk",
+          "ANDROID_SDK_ROOT": "C:\\Users\\Tyler\\AppData\\Local\\Android\\Sdk"
+        }
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "Scenegram: Launch",
+      "type": "process",
+      "command": "C:\\Users\\Tyler\\AppData\\Local\\Android\\Sdk\\platform-tools\\adb.exe",
+      "args": [
+        "shell",
+        "am",
+        "start",
+        "-W",
+        "-n",
+        "com.tyler.scenegram/.MainActivity"
+      ],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "Scenegram: Install + Launch",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "Scenegram: Install Debug",
+        "Scenegram: Launch"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Scenegram: Clear App Data",
+      "type": "process",
+      "command": "C:\\Users\\Tyler\\AppData\\Local\\Android\\Sdk\\platform-tools\\adb.exe",
+      "args": [
+        "shell",
+        "pm",
+        "clear",
+        "com.tyler.scenegram"
+      ],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "Scenegram: Grant Notification Permission",
+      "type": "process",
+      "command": "C:\\Users\\Tyler\\AppData\\Local\\Android\\Sdk\\platform-tools\\adb.exe",
+      "args": [
+        "shell",
+        "pm",
+        "grant",
+        "com.tyler.scenegram",
+        "android.permission.POST_NOTIFICATIONS"
+      ],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "Scenegram: Logcat",
+      "type": "process",
+      "command": "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+      "args": [
+        "-NoProfile",
+        "-Command",
+        "$scenegramAdb = 'C:\\Users\\Tyler\\AppData\\Local\\Android\\Sdk\\platform-tools\\adb.exe'; $scenegramPid = ((& $scenegramAdb shell pidof -s com.tyler.scenegram) -join '').Trim(); if (-not $scenegramPid) { throw 'Scenegram is not running. Run Scenegram: Launch first.' }; & $scenegramAdb logcat --pid=$scenegramPid"
+      ],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": false
+      }
+    },
+    {
+      "label": "Scenegram Emulator: Start A51",
+      "type": "process",
+      "command": "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\scripts\\start-a51-emulator.ps1"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "ANDROID_USER_HOME": "${workspaceFolder}\\.android-user",
+          "ANDROID_AVD_HOME": "${workspaceFolder}\\.android-user\\avd"
+        }
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "Scenegram Emulator: Cold Boot A51",
+      "type": "process",
+      "command": "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\scripts\\start-a51-emulator.ps1",
+        "-ColdBoot"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "ANDROID_USER_HOME": "${workspaceFolder}\\.android-user",
+          "ANDROID_AVD_HOME": "${workspaceFolder}\\.android-user\\avd"
+        }
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Scenegram Emulator: Install APK",
+      "type": "process",
+      "command": "C:\\Users\\Tyler\\AppData\\Local\\Android\\Sdk\\platform-tools\\adb.exe",
+      "args": [
+        "-e",
+        "install",
+        "-r",
+        "-d",
+        "${workspaceFolder}\\app\\build\\outputs\\apk\\debug\\app-debug.apk"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Scenegram Emulator: Grant Notifications",
+      "type": "process",
+      "command": "C:\\Users\\Tyler\\AppData\\Local\\Android\\Sdk\\platform-tools\\adb.exe",
+      "args": [
+        "-e",
+        "shell",
+        "pm",
+        "grant",
+        "com.tyler.scenegram",
+        "android.permission.POST_NOTIFICATIONS"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Scenegram Emulator: Launch",
+      "type": "process",
+      "command": "C:\\Users\\Tyler\\AppData\\Local\\Android\\Sdk\\platform-tools\\adb.exe",
+      "args": [
+        "-e",
+        "shell",
+        "am",
+        "start",
+        "-W",
+        "-n",
+        "com.tyler.scenegram/.MainActivity"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Scenegram Emulator: Build + Install + Launch",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "Scenegram Emulator: Start A51",
+        "Scenegram: Build Debug",
+        "Scenegram Emulator: Install APK",
+        "Scenegram Emulator: Grant Notifications",
+        "Scenegram Emulator: Launch"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Scenegram Emulator: Clear App Data",
+      "type": "process",
+      "command": "C:\\Users\\Tyler\\AppData\\Local\\Android\\Sdk\\platform-tools\\adb.exe",
+      "args": [
+        "-e",
+        "shell",
+        "pm",
+        "clear",
+        "com.tyler.scenegram"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Scenegram Emulator: Capture Screenshot",
+      "type": "process",
+      "command": "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\scripts\\capture-emulator-screenshot.ps1"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Scenegram Emulator: Stop",
+      "type": "process",
+      "command": "C:\\Users\\Tyler\\AppData\\Local\\Android\\Sdk\\platform-tools\\adb.exe",
+      "args": [
+        "-e",
+        "emu",
+        "kill"
+      ],
+      "problemMatcher": []
+    }
+  ]
+}

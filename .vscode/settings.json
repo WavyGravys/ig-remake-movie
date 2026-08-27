@@ -1,0 +1,29 @@
+{
+  "java.jdt.ls.java.home": "C:\\Program Files\\Microsoft\\jdk-17.0.20.101-hotspot",
+  "java.import.gradle.java.home": "C:\\Program Files\\Microsoft\\jdk-17.0.20.101-hotspot",
+  "java.configuration.runtimes": [
+    {
+      "name": "JavaSE-17",
+      "path": "C:\\Program Files\\Microsoft\\jdk-17.0.20.101-hotspot",
+      "default": true
+    }
+  ],
+  "java.configuration.updateBuildConfiguration": "automatic",
+  "terminal.integrated.env.windows": {
+    "JAVA_HOME": "C:\\Program Files\\Microsoft\\jdk-17.0.20.101-hotspot",
+    "GRADLE_USER_HOME": "${workspaceFolder}\\.gradle-user",
+    "ANDROID_USER_HOME": "${workspaceFolder}\\.android-user",
+    "ANDROID_AVD_HOME": "${workspaceFolder}\\.android-user\\avd",
+    "ANDROID_HOME": "C:\\Users\\Tyler\\AppData\\Local\\Android\\Sdk",
+    "ANDROID_SDK_ROOT": "C:\\Users\\Tyler\\AppData\\Local\\Android\\Sdk",
+    "PATH": "C:\\Program Files\\Microsoft\\jdk-17.0.20.101-hotspot\\bin;C:\\Users\\Tyler\\AppData\\Local\\Android\\Sdk\\platform-tools;${env:PATH}"
+  },
+  "files.watcherExclude": {
+    "**/.gradle/**": true,
+    "**/build/**": true
+  },
+  "search.exclude": {
+    "**/.gradle": true,
+    "**/build": true
+  }
+}

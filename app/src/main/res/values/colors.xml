@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="scenegram_surface">#151219</color>
+    <color name="scenegram_on_surface">#F6F2F8</color>
+    <color name="scenegram_accent">#B99CFF</color>
+    <color name="scenegram_dark_surface">#151219</color>
+    <color name="scenegram_dark_on_surface">#F7F7F7</color>
+</resources>

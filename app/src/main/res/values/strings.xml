@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Moment</string>
+    <string name="notification_channel_messages">Moment messages</string>
+    <string name="notification_channel_messages_description">Scripted incoming messages for filming</string>
+    <string name="notification_permission_rationale">Allow notifications so scripted messages can appear during a take.</string>
+</resources>
