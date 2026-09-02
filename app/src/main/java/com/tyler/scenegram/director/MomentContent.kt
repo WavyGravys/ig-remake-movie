@@ -70,6 +70,7 @@ data class SavedChat(
     val profileName: String,
     val profileImagePath: String?,
     val initialMessages: List<SavedChatMessage>,
+    val showStoryRing: Boolean = true,
 ) {
     init {
         require(id.isNotBlank()) { "Chat ids cannot be blank" }
@@ -140,6 +141,7 @@ data class NewChatRequest(
     val profileName: String,
     val profileImageSourceUri: String?,
     val initialMessages: List<NewChatMessage>,
+    val showStoryRing: Boolean = true,
 )
 
 data class NewChatMessage(

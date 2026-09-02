@@ -22,10 +22,10 @@ object NotificationController {
     fun createChannel(context: Context) {
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "Moment messages",
+            context.getString(R.string.notification_channel_messages),
             NotificationManager.IMPORTANCE_HIGH,
         ).apply {
-            description = "Scripted incoming messages used during filming"
+            description = context.getString(R.string.notification_channel_messages_description)
             enableVibration(true)
         }
         context.getSystemService(NotificationManager::class.java)

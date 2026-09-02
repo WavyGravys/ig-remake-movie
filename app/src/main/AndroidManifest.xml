@@ -6,9 +6,11 @@
     <application
         android:name=".SceneGramApplication"
         android:allowBackup="false"
-        android:icon="@drawable/ic_app"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="false"
+        android:icon="@drawable/logo_homescreen_pixel"
         android:label="@string/app_name"
-        android:roundIcon="@drawable/ic_app"
+        android:roundIcon="@drawable/logo_homescreen_pixel"
         android:supportsRtl="true"
         android:theme="@style/Theme.SceneGram"
         android:usesCleartextTraffic="false">
@@ -16,7 +18,8 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:screenOrientation="portrait">
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustNothing">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 

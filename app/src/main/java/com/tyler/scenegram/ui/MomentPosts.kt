@@ -1,12 +1,12 @@
 @file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@file:androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 
 package com.tyler.scenegram.ui
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
-import android.media.ExifInterface
-import android.widget.VideoView
+import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -16,6 +16,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,6 +39,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -48,14 +50,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -63,12 +63,21 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.exifinterface.media.ExifInterface
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.compose.ContentFrame
+import androidx.media3.ui.compose.SURFACE_TYPE_TEXTURE_VIEW
+import com.tyler.scenegram.R
 import com.tyler.scenegram.director.CustomPost
 import com.tyler.scenegram.director.PostMediaType
 import com.tyler.scenegram.director.PostPlacement
@@ -78,6 +87,7 @@ import com.tyler.scenegram.model.PlaceholderContent
 import com.tyler.scenegram.model.Profile
 import com.tyler.scenegram.model.Reel
 import java.util.Locale
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -101,20 +111,33 @@ private data class DisplayPost(
 )
 
 @Composable
-internal fun ReelsScreen(modifier: Modifier = Modifier, customPosts: List<CustomPost>) {
-    val posts = remember(customPosts) {
-        builtInMixedPosts() + customPosts
+internal fun ReelsScreen(
+    modifier: Modifier = Modifier,
+    customPosts: List<CustomPost>,
+    showPlaceholderVideos: Boolean,
+) {
+    val posts = remember(customPosts, showPlaceholderVideos) {
+        builtInMixedPosts(showPlaceholderVideos) + customPosts
             .filter { it.placement == PostPlacement.REELS }
             .map(CustomPost::toDisplayPost)
     }
     val pagerState = rememberPagerState(pageCount = { posts.size })
     VerticalPager(
         state = pagerState,
-        modifier = modifier.fillMaxSize().testTag("reels"),
+        modifier = modifier.fillMaxSize().clipToBounds().testTag("reels"),
+        beyondViewportPageCount = 1,
+        key = { page -> posts[page].id },
     ) { page ->
+        val activePage = if (pagerState.isScrollInProgress) {
+            pagerState.targetPage
+        } else {
+            pagerState.currentPage
+        }
         PostPage(
             post = posts[page],
-            active = pagerState.currentPage == page,
+            active = activePage == page,
+            showVideoSurface = page == pagerState.currentPage ||
+                (pagerState.isScrollInProgress && page == pagerState.targetPage),
             index = page,
         )
     }
@@ -126,10 +149,14 @@ internal fun SearchScreen(
     query: String,
     selectedPostId: String?,
     customPosts: List<CustomPost>,
+    showPlaceholderVideos: Boolean,
     onQueryChange: (String) -> Unit,
     onSelectPost: (String?) -> Unit,
 ) {
-    val posts = remember(query, customPosts) { searchPosts(query, customPosts) }
+    val focusManager = LocalFocusManager.current
+    val posts = remember(query, customPosts, showPlaceholderVideos) {
+        searchPosts(query, customPosts, showPlaceholderVideos)
+    }
     val selectedIndex = posts.indexOfFirst { it.id == selectedPostId }
     BackHandler(enabled = selectedIndex >= 0) { onSelectPost(null) }
 
@@ -137,13 +164,22 @@ internal fun SearchScreen(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .pointerInput(Unit) {
+                detectTapGestures(onTap = { focusManager.clearFocus() })
+            }
             .testTag("search"),
     ) {
         OutlinedTextField(
             value = query,
             onValueChange = onQueryChange,
             placeholder = { Text("Search") },
-            leadingIcon = { Text("⌕", fontSize = 23.sp) },
+            leadingIcon = {
+                Icon(
+                    painter = painterResource(R.drawable.ic_moment_search),
+                    contentDescription = "Search",
+                    modifier = Modifier.size(24.dp),
+                )
+            },
             trailingIcon = if (selectedIndex >= 0) {
                 { TextButton(onClick = { onSelectPost(null) }) { Text("×", fontSize = 22.sp) } }
             } else {
@@ -164,9 +200,22 @@ internal fun SearchScreen(
             }
             VerticalPager(
                 state = pagerState,
-                modifier = Modifier.weight(1f).fillMaxWidth(),
+                modifier = Modifier.weight(1f).fillMaxWidth().clipToBounds(),
+                beyondViewportPageCount = 1,
+                key = { page -> posts[page].id },
             ) { page ->
-                PostPage(posts[page], pagerState.currentPage == page, page)
+                val activePage = if (pagerState.isScrollInProgress) {
+                    pagerState.targetPage
+                } else {
+                    pagerState.currentPage
+                }
+                PostPage(
+                    posts[page],
+                    activePage == page,
+                    page == pagerState.currentPage ||
+                        (pagerState.isScrollInProgress && page == pagerState.targetPage),
+                    page,
+                )
             }
         } else {
             LazyVerticalGrid(
@@ -191,7 +240,12 @@ internal fun SearchScreen(
 }
 
 @Composable
-private fun PostPage(post: DisplayPost, active: Boolean, index: Int) {
+private fun PostPage(
+    post: DisplayPost,
+    active: Boolean,
+    showVideoSurface: Boolean,
+    index: Int,
+) {
     val loop = rememberInfiniteTransition(label = "moment-post-$index")
     val motion by loop.animateFloat(
         initialValue = -20f,
@@ -206,7 +260,7 @@ private fun PostPage(post: DisplayPost, active: Boolean, index: Int) {
         label = "placeholder-progress",
     )
 
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
+    Box(Modifier.fillMaxSize().clipToBounds().background(Color.Black)) {
         when (post.mediaType) {
             DisplayMediaType.PLACEHOLDER_VIDEO -> PlaceholderVideoMedia(
                 key = post.mediaKeys.first(),
@@ -223,6 +277,7 @@ private fun PostPage(post: DisplayPost, active: Boolean, index: Int) {
             DisplayMediaType.IMPORTED_VIDEO -> ImportedVideoMedia(
                 path = post.mediaPaths.first(),
                 active = active,
+                showSurface = showVideoSurface,
             )
             DisplayMediaType.IMPORTED_IMAGES -> CarouselMedia(
                 count = post.mediaPaths.size,
@@ -279,10 +334,11 @@ private fun PostPage(post: DisplayPost, active: Boolean, index: Int) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(17.dp),
         ) {
-            PostAction("♡", compactCount(post.likes))
-            PostAction("○", compactCount(post.comments))
-            PostAction("⌁", "")
-            PostAction("•••", "")
+            PostAction(R.drawable.ic_moment_action_like, compactCount(post.likes), "Like")
+            PostAction(R.drawable.ic_moment_action_comment, compactCount(post.comments), "Comments")
+            PostAction(R.drawable.ic_moment_action_share, "", "Share")
+            PostAction(R.drawable.ic_moment_action_bookmark, "", "Save")
+            PostAction(R.drawable.ic_moment_action_more, "", "More")
         }
     }
 }
@@ -344,7 +400,14 @@ private fun PlaceholderVideoMedia(key: String, active: Boolean, motion: Float, i
             modifier = Modifier.align(Alignment.Center).padding(bottom = 64.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text(if (active) "▶" else "Ⅱ", color = Color.White, fontSize = 54.sp)
+            Icon(
+                painter = painterResource(
+                    if (active) R.drawable.ic_moment_play else R.drawable.ic_moment_pause,
+                ),
+                contentDescription = null,
+                modifier = Modifier.size(54.dp),
+                tint = Color.White,
+            )
             Text("VIDEO PLACEHOLDER", color = Color.White, fontWeight = FontWeight.Bold)
             Text(key, color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
         }
@@ -367,31 +430,31 @@ private fun PlaceholderImageMedia(key: String, index: Int) {
 }
 
 @Composable
-private fun ImportedVideoMedia(path: String, active: Boolean) {
-    val context = LocalContext.current
-    val latestActive = rememberUpdatedState(active)
-    var videoView by remember(path) { mutableStateOf<VideoView?>(null) }
-    AndroidView(
-        factory = {
-            VideoView(context).apply {
-                setVideoPath(path)
-                setOnPreparedListener { player ->
-                    player.isLooping = true
-                    if (latestActive.value) start()
-                }
-                videoView = this
-            }
-        },
-        update = { view ->
-            if (active) view.start() else view.pause()
-        },
-        modifier = Modifier.fillMaxSize().background(Color.Black),
-    )
-    DisposableEffect(path) {
-        onDispose {
-            videoView?.stopPlayback()
-            videoView = null
+private fun ImportedVideoMedia(path: String, active: Boolean, showSurface: Boolean) {
+    val appContext = LocalContext.current.applicationContext
+    val player = remember(path) {
+        ExoPlayer.Builder(appContext).build().apply {
+            repeatMode = Player.REPEAT_MODE_ONE
+            setMediaItem(MediaItem.fromUri(Uri.fromFile(File(path))))
+            prepare()
         }
+    }
+    LaunchedEffect(player, active) {
+        player.playWhenReady = active
+        if (active) player.play() else player.pause()
+    }
+    ContentFrame(
+        player = if (showSurface) player else null,
+        modifier = Modifier.fillMaxSize().clipToBounds().background(Color.Black),
+        surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
+        contentScale = ContentScale.Crop,
+        keepContentOnReset = true,
+        shutter = {
+            Box(Modifier.fillMaxSize().background(Color(0xFF181818)))
+        },
+    )
+    DisposableEffect(player) {
+        onDispose { player.release() }
     }
 }
 
@@ -429,7 +492,7 @@ private fun ImportedImage(
 
 @Composable
 private fun PostThumbnail(post: DisplayPost, modifier: Modifier = Modifier) {
-    Box(modifier.background(Color(0xFF1D1B22))) {
+    Box(modifier.background(Color(0xFF1C1C1C))) {
         when (post.mediaType) {
             DisplayMediaType.IMPORTED_IMAGES -> ImportedImage(
                 post.mediaPaths.first(),
@@ -446,7 +509,14 @@ private fun PostThumbnail(post: DisplayPost, modifier: Modifier = Modifier) {
             -> Box(
                 Modifier.fillMaxSize().background(Brush.linearGradient(placeholderGradient(post.id.hashCode()))),
                 contentAlignment = Alignment.Center,
-            ) { Text("▶", color = Color.White, fontSize = 30.sp) }
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_moment_play),
+                    contentDescription = "Video",
+                    modifier = Modifier.size(30.dp),
+                    tint = Color.White,
+                )
+            }
         }
         if (post.mediaType == DisplayMediaType.IMPORTED_IMAGES ||
             post.mediaType == DisplayMediaType.PLACEHOLDER_IMAGES
@@ -489,14 +559,21 @@ internal fun MomentAvatar(
 }
 
 @Composable
-private fun PostAction(glyph: String, label: String) {
+private fun PostAction(iconResource: Int, label: String, contentDescription: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(glyph, color = Color.White, fontSize = 29.sp, fontWeight = FontWeight.Bold)
+        Icon(
+            painter = painterResource(iconResource),
+            contentDescription = contentDescription,
+            modifier = Modifier.size(30.dp),
+            tint = Color.White,
+        )
         if (label.isNotEmpty()) Text(label, color = Color.White, fontSize = 11.sp)
     }
 }
 
-private fun builtInMixedPosts(): List<DisplayPost> {
+private fun builtInMixedPosts(showPlaceholderVideos: Boolean = true): List<DisplayPost> {
+    if (!showPlaceholderVideos) return emptyList()
+
     val profiles = PlaceholderContent.profiles.associateBy(Profile::id)
     val videos = PlaceholderContent.reels.mapIndexed { index, reel ->
         reel.toDisplayPost(profiles.getValue(reel.authorId), index)
@@ -513,8 +590,12 @@ private fun builtInMixedPosts(): List<DisplayPost> {
     }
 }
 
-private fun searchPosts(query: String, customPosts: List<CustomPost>): List<DisplayPost> {
-    val builtIn = builtInMixedPosts()
+private fun searchPosts(
+    query: String,
+    customPosts: List<CustomPost>,
+    showPlaceholderVideos: Boolean,
+): List<DisplayPost> {
+    val builtIn = builtInMixedPosts(showPlaceholderVideos)
     val static = if (query.isBlank()) {
         listOfNotNull(builtIn.getOrNull(0), builtIn.getOrNull(3), builtIn.getOrNull(4))
     } else {
@@ -612,15 +693,15 @@ private fun decodeSampledBitmap(path: String, maxWidth: Int, maxHeight: Int): Bi
     }
 }
 
-internal val MomentAccent = Color(0xFFB99CFF)
+internal val MomentAccent = Color(0xFFFF8120)
 
 internal fun placeholderColor(seed: Int): Color {
     val palette = listOf(
-        Color(0xFF7657FF),
-        Color(0xFFDD3B87),
-        Color(0xFF287D88),
-        Color(0xFFDA7742),
-        Color(0xFF5368A8),
+        Color(0xFF8D8D8D),
+        Color(0xFFD39A70),
+        Color(0xFF565656),
+        Color(0xFFA75C30),
+        Color(0xFF373737),
     )
     return palette[(seed and Int.MAX_VALUE) % palette.size]
 }
@@ -628,5 +709,5 @@ internal fun placeholderColor(seed: Int): Color {
 private fun placeholderGradient(seed: Int): List<Color> {
     val first = placeholderColor(seed)
     val second = placeholderColor(seed + 2)
-    return listOf(first, second, Color(0xFF0C0B0F))
+    return listOf(first, second, Color.Black)
 }

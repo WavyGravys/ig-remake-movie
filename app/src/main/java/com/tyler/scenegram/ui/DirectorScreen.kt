@@ -8,6 +8,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
@@ -24,29 +25,34 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.tyler.scenegram.R
 import com.tyler.scenegram.director.AppUiState
 import com.tyler.scenegram.director.ChatSceneStep
 import com.tyler.scenegram.director.ChatSide
@@ -64,14 +70,10 @@ internal fun DirectorScreen(
     state: AppUiState,
     notificationsGranted: Boolean,
     requestNotificationPermission: () -> Unit,
-    onPrepareChat: () -> Unit,
-    onPrepareReels: () -> Unit,
-    onPrepareUninstall: () -> Unit,
-    onStartDemoChat: (Int, Int) -> Unit,
-    onCancel: () -> Unit,
     onTestNotification: () -> Boolean,
     onAddPost: (NewPostRequest) -> Unit,
     onDeletePost: (String) -> Unit,
+    onShowPlaceholderVideosChange: (Boolean) -> Unit,
     onAddChat: (NewChatRequest) -> Unit,
     onDeleteChat: (String) -> Unit,
     onAddScene: (
@@ -87,6 +89,7 @@ internal fun DirectorScreen(
     onStartScene: (String) -> Unit,
 ) {
     val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
     var notice by remember { mutableStateOf<String?>(null) }
 
     var postPlacement by remember { mutableStateOf(PostPlacement.REELS) }
@@ -127,6 +130,7 @@ internal fun DirectorScreen(
 
     var chatProfileName by remember { mutableStateOf("") }
     var chatProfileImageUri by remember { mutableStateOf<String?>(null) }
+    var chatShowStoryRing by remember { mutableStateOf(true) }
     var chatMessageSide by remember { mutableStateOf(ChatSide.CONTACT) }
     var chatMessageKind by remember { mutableStateOf(SavedMessageKind.TEXT) }
     var chatVoiceDuration by remember { mutableStateOf("7") }
@@ -164,10 +168,11 @@ internal fun DirectorScreen(
                 postLikes = "0"
                 postComments = "0"
             }
-            state.contentStatus?.startsWith("Chat with ") == true &&
+            state.contentStatus?.startsWith("Person ") == true &&
                 state.contentStatus.endsWith(" saved") -> {
                 chatProfileName = ""
                 chatProfileImageUri = null
+                chatShowStoryRing = true
                 chatMessageText = ""
                 chatInitialMessages.clear()
             }
@@ -180,13 +185,13 @@ internal fun DirectorScreen(
         }
     }
 
-    var demoTextDelay by remember { mutableStateOf("3") }
-    var demoVoiceDelay by remember { mutableStateOf("5") }
-
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .pointerInput(Unit) {
+                detectTapGestures(onTap = { focusManager.clearFocus() })
+            }
             .testTag("director"),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -205,56 +210,48 @@ internal fun DirectorScreen(
         }
 
         item {
-            DirectorCard("Quick preparation") {
-                Button(onClick = onPrepareChat, modifier = Modifier.fillMaxWidth()) {
-                    Text("Prepare first chat")
-                }
-                FilledTonalButton(onClick = onPrepareReels, modifier = Modifier.fillMaxWidth()) {
-                    Text("Prepare reels")
-                }
-                FilledTonalButton(onClick = onPrepareUninstall, modifier = Modifier.fillMaxWidth()) {
-                    Text("Prepare fake uninstall")
+            DirectorCard("Add a post") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Show placeholder posts", fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "Turn off to hide all built-in test posts; no files are deleted",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 12.sp,
+                        )
+                    }
+                    Switch(
+                        checked = state.showPlaceholderVideos,
+                        onCheckedChange = onShowPlaceholderVideosChange,
+                    )
                 }
                 HorizontalDivider()
-                Text("Text + voice rehearsal", fontWeight = FontWeight.SemiBold)
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    NumberField(
-                        value = demoTextDelay,
-                        onValueChange = { demoTextDelay = it },
-                        label = "Text delay",
-                        modifier = Modifier.weight(1f),
-                    )
-                    NumberField(
-                        value = demoVoiceDelay,
-                        onValueChange = { demoVoiceDelay = it },
-                        label = "Voice after",
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-                Button(
-                    onClick = {
-                        onStartDemoChat(
-                            demoTextDelay.toIntOrNull() ?: 0,
-                            demoVoiceDelay.toIntOrNull() ?: 0,
-                        )
-                    },
-                    modifier = Modifier.fillMaxWidth().testTag("start-chat-cue"),
-                ) { Text("Start demo cue") }
-                OutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) {
-                    Text("Cancel pending cues")
-                }
-            }
-        }
-
-        item {
-            DirectorCard("Add a post") {
                 Text("Destination", fontWeight = FontWeight.SemiBold)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
                     PostPlacement.entries.forEach { placement ->
+                        val chipWeight = when (placement) {
+                            PostPlacement.REELS -> 0.88f
+                            PostPlacement.SEARCH_DEFAULT -> 1.05f
+                            PostPlacement.SEARCH_RESULTS -> 1.25f
+                        }
                         FilterChip(
                             selected = postPlacement == placement,
                             onClick = { postPlacement = placement },
-                            label = { Text(placement.directorLabel()) },
+                            label = {
+                                Text(
+                                    placement.directorLabel(),
+                                    fontSize = 10.sp,
+                                    maxLines = 1,
+                                )
+                            },
+                            modifier = Modifier.weight(chipWeight),
                         )
                     }
                 }
@@ -327,18 +324,20 @@ internal fun DirectorScreen(
                     HorizontalDivider()
                     Text("Saved posts", fontWeight = FontWeight.SemiBold)
                     state.customPosts.forEach { post ->
-                        SavedItemRow(
-                            title = "${post.profileName} · ${post.placement.directorLabel()}",
-                            detail = "${post.mediaPaths.size} media · ${post.likes} likes · ${post.comments} comments",
-                            onDelete = { onDeletePost(post.id) },
-                        )
+                        key(post.id) {
+                            SavedItemRow(
+                                title = "${post.profileName} · ${post.placement.directorLabel()}",
+                                detail = "${post.mediaPaths.size} media · ${post.likes} likes · ${post.comments} comments",
+                                onDelete = { onDeletePost(post.id) },
+                            )
+                        }
                     }
                 }
             }
         }
 
         item {
-            DirectorCard("Add a chat") {
+            DirectorCard("Add a person") {
                 OutlinedTextField(
                     value = chatProfileName,
                     onValueChange = { chatProfileName = it },
@@ -354,6 +353,24 @@ internal fun DirectorScreen(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(if (chatProfileImageUri == null) "Choose profile picture" else "Profile picture selected")
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Glowing profile circle", fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "Show the colored ring in the scrollable people row",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 12.sp,
+                        )
+                    }
+                    Switch(
+                        checked = chatShowStoryRing,
+                        onCheckedChange = { chatShowStoryRing = it },
+                    )
                 }
                 Text("Initial chat history", fontWeight = FontWeight.SemiBold)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -437,18 +454,22 @@ internal fun DirectorScreen(
                                 profileName = chatProfileName,
                                 profileImageSourceUri = chatProfileImageUri,
                                 initialMessages = chatInitialMessages.toList(),
+                                showStoryRing = chatShowStoryRing,
                             ),
                         )
                     },
                     enabled = chatProfileName.isNotBlank() && state.contentStatus != "Saving chat…",
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text("Save chat") }
+                ) { Text("Save person") }
                 HorizontalDivider()
-                Text("Saved chats", fontWeight = FontWeight.SemiBold)
+                Text("Saved people", fontWeight = FontWeight.SemiBold)
                 state.chats.forEach { chat ->
                     SavedItemRow(
                         title = chat.profileName,
-                        detail = "${chat.handle} · ${chat.initialMessages.size} initial message(s)",
+                        detail = buildString {
+                            append("${chat.handle} · ${chat.initialMessages.size} initial message(s)")
+                            append(if (chat.showStoryRing) " · glowing circle" else " · plain circle")
+                        },
                         onDelete = { onDeleteChat(chat.id) },
                     )
                 }
@@ -687,6 +708,11 @@ internal fun DirectorScreen(
                     fontWeight = FontWeight.SemiBold,
                 )
                 if (!notificationsGranted) {
+                    Text(
+                        stringResource(R.string.notification_permission_rationale),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 13.sp,
+                    )
                     Button(onClick = requestNotificationPermission) { Text("Allow notifications") }
                 }
                 OutlinedButton(

@@ -14,16 +14,20 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -39,10 +43,10 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -64,6 +68,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -72,6 +77,8 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.tyler.scenegram.BuildConfig
+import com.tyler.scenegram.R
 import com.tyler.scenegram.director.AppScreen
 import com.tyler.scenegram.director.AppUiState
 import com.tyler.scenegram.director.AppViewModel
@@ -82,21 +89,25 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 private val MomentColors = darkColorScheme(
     primary = MomentAccent,
-    onPrimary = Color(0xFF201139),
-    primaryContainer = Color(0xFF4A4458),
-    onPrimaryContainer = Color(0xFFF8F2FF),
-    secondary = Color(0xFFFF8CC6),
-    onSecondary = Color(0xFF351023),
-    secondaryContainer = Color(0xFF4A4458),
-    onSecondaryContainer = Color(0xFFFFE8F3),
-    background = Color(0xFF151219),
-    onBackground = Color(0xFFF6F2F8),
-    surface = Color(0xFF17151C),
-    onSurface = Color(0xFFF6F2F8),
-    surfaceVariant = Color(0xFF24212A),
-    onSurfaceVariant = Color(0xFFBBB4C1),
-    outline = Color(0xFF4A4550),
-    error = Color(0xFFFF8A80),
+    onPrimary = Color.Black,
+    primaryContainer = Color(0xFF5C2C0F),
+    onPrimaryContainer = Color(0xFFFFE0C8),
+    secondary = Color(0xFFBDB7B3),
+    onSecondary = Color.Black,
+    secondaryContainer = Color(0xFF35312F),
+    onSecondaryContainer = Color.White,
+    tertiary = Color(0xFFD9A77F),
+    onTertiary = Color.Black,
+    tertiaryContainer = Color(0xFF4A3122),
+    onTertiaryContainer = Color(0xFFFFDEC3),
+    background = Color.Black,
+    onBackground = Color.White,
+    surface = Color(0xFF191919),
+    onSurface = Color.White,
+    surfaceVariant = Color(0xFF333333),
+    onSurfaceVariant = Color(0xFFD0CBC8),
+    outline = Color(0xFF595552),
+    error = Color(0xFFFF6B5F),
 )
 
 @Composable
@@ -126,8 +137,8 @@ fun SceneGramApp(viewModel: AppViewModel) {
         val activity = view.context as? Activity
         val window = activity?.window
         val controller = window?.let { WindowInsetsControllerCompat(it, view) }
-        window?.statusBarColor = AndroidColor.rgb(21, 18, 25)
-        window?.navigationBarColor = AndroidColor.rgb(21, 18, 25)
+        window?.statusBarColor = AndroidColor.BLACK
+        window?.navigationBarColor = AndroidColor.BLACK
         controller?.isAppearanceLightStatusBars = false
         controller?.isAppearanceLightNavigationBars = false
         onDispose { }
@@ -152,6 +163,7 @@ fun SceneGramApp(viewModel: AppViewModel) {
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun AppScaffold(
     state: AppUiState,
     viewModel: AppViewModel,
@@ -179,16 +191,23 @@ private fun AppScaffold(
             }
         },
     ) { padding ->
+        val chatModifier = if (WindowInsets.isImeVisible) {
+            Modifier.padding(top = padding.calculateTopPadding())
+        } else {
+            Modifier.padding(padding)
+        }
         when (state.screen) {
             AppScreen.REELS -> ReelsScreen(
                 modifier = Modifier.padding(padding),
                 customPosts = state.customPosts,
+                showPlaceholderVideos = state.showPlaceholderVideos,
             )
             AppScreen.SEARCH -> SearchScreen(
                 modifier = Modifier.padding(padding),
                 query = state.searchQuery,
                 selectedPostId = state.selectedSearchPostId,
                 customPosts = state.customPosts,
+                showPlaceholderVideos = state.showPlaceholderVideos,
                 onQueryChange = viewModel::updateSearchQuery,
                 onSelectPost = viewModel::selectSearchPost,
             )
@@ -198,7 +217,7 @@ private fun AppScaffold(
                 onOpenChat = viewModel::openChat,
             )
             AppScreen.CHAT -> ChatScreen(
-                modifier = Modifier.padding(padding),
+                modifier = chatModifier,
                 state = state,
                 chat = selectedChat ?: state.chats.first(),
                 onSend = viewModel::sendActorMessage,
@@ -213,14 +232,10 @@ private fun AppScaffold(
                 state = state,
                 notificationsGranted = notificationsGranted,
                 requestNotificationPermission = requestNotificationPermission,
-                onPrepareChat = viewModel::prepareChatScene,
-                onPrepareReels = viewModel::prepareReelsScene,
-                onPrepareUninstall = viewModel::prepareUninstallScene,
-                onStartDemoChat = viewModel::startChatScript,
-                onCancel = viewModel::cancelScript,
                 onTestNotification = viewModel::sendTestNotification,
                 onAddPost = viewModel::addPost,
                 onDeletePost = viewModel::deletePost,
+                onShowPlaceholderVideosChange = viewModel::setShowPlaceholderVideos,
                 onAddChat = viewModel::addChat,
                 onDeleteChat = viewModel::deleteChat,
                 onAddScene = viewModel::addChatScene,
@@ -257,57 +272,97 @@ private fun MomentTopBar(
         AppScreen.DIRECTOR,
         AppScreen.UNINSTALL_CONFIRMATION,
     )
-    val isMain = screen in setOf(AppScreen.REELS, AppScreen.SEARCH, AppScreen.INBOX, AppScreen.ME)
+    val isDirectorTrigger = screen == AppScreen.REELS
 
-    Row(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
-            .height(56.dp)
-            .padding(horizontal = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(horizontal = 12.dp, vertical = 6.dp),
     ) {
-        if (showBack) {
-            TextButton(onClick = onBack, modifier = Modifier.width(48.dp)) {
-                Text("‹", fontSize = 34.sp, color = MaterialTheme.colorScheme.onBackground)
-            }
-        }
-        Text(
-            text = title,
+        Row(
             modifier = Modifier
-                .weight(1f)
-                .then(if (isMain) Modifier.clickable(onClick = onWordmarkTap) else Modifier)
-                .padding(vertical = 8.dp),
-            color = MaterialTheme.colorScheme.onBackground,
-            fontSize = if (screen == AppScreen.REELS) 25.sp else 20.sp,
-            fontWeight = FontWeight.Bold,
-        )
-        if (!showBack) Spacer(Modifier.width(12.dp))
+                .fillMaxWidth()
+                .height(52.dp)
+                .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(18.dp))
+                .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (showBack) {
+                Box(
+                    modifier = Modifier
+                        .width(44.dp)
+                        .height(52.dp)
+                        .clickable(onClick = onBack),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        "‹",
+                        color = MaterialTheme.colorScheme.onBackground,
+                        fontSize = 34.sp,
+                        lineHeight = 34.sp,
+                    )
+                }
+            }
+            Text(
+                text = title,
+                modifier = Modifier
+                    .weight(1f)
+                    .then(if (isDirectorTrigger) Modifier.clickable(onClick = onWordmarkTap) else Modifier)
+                    .padding(horizontal = 6.dp, vertical = 8.dp),
+                color = MaterialTheme.colorScheme.onBackground,
+                fontSize = if (screen == AppScreen.REELS) 25.sp else 20.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            Icon(
+                painter = painterResource(R.drawable.logo_normal_pixel),
+                contentDescription = "Moment",
+                modifier = Modifier.size(40.dp),
+                tint = Color.Unspecified,
+            )
+        }
     }
 }
 
 @Composable
 private fun MomentNavigation(selected: AppScreen, onSelected: (AppScreen) -> Unit) {
     val items = listOf(
-        Triple(AppScreen.REELS, "▷", "reels"),
-        Triple(AppScreen.SEARCH, "⌕", "search"),
-        Triple(AppScreen.INBOX, "◇", "inbox"),
-        Triple(AppScreen.ME, "○", "me"),
+        Triple(AppScreen.REELS, R.drawable.ic_moment_nav_reels, "reels"),
+        Triple(AppScreen.SEARCH, R.drawable.ic_moment_search, "search"),
+        Triple(AppScreen.INBOX, R.drawable.ic_moment_nav_inbox, "inbox"),
+        Triple(AppScreen.ME, R.drawable.ic_moment_nav_me, "me"),
     )
     NavigationBar(
         containerColor = MaterialTheme.colorScheme.background,
         contentColor = MaterialTheme.colorScheme.onBackground,
         modifier = Modifier.navigationBarsPadding(),
     ) {
-        items.forEach { (screen, glyph, tag) ->
-            NavigationBarItem(
-                selected = selected == screen,
-                onClick = { onSelected(screen) },
-                icon = { Text(glyph, fontSize = 25.sp) },
-                modifier = Modifier.testTag("tab-$tag"),
-                alwaysShowLabel = false,
-            )
+        items.forEach { (screen, iconResource, tag) ->
+            val interactionSource = remember(screen) { MutableInteractionSource() }
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(80.dp)
+                    .testTag("tab-$tag")
+                    .clickable(
+                        interactionSource = interactionSource,
+                        indication = null,
+                        onClick = { onSelected(screen) },
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(iconResource),
+                    contentDescription = tag,
+                    modifier = Modifier.size(28.dp),
+                    tint = if (selected == screen) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+            }
         }
     }
 }
@@ -324,41 +379,50 @@ private fun InboxScreen(
             .background(MaterialTheme.colorScheme.background)
             .testTag("inbox"),
     ) {
-        item { StoryStrip(chats) }
+        item { StoryStrip(chats, onOpenChat) }
         items(chats, key = SavedChat::id) { chat ->
-            Row(
+            Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { onOpenChat(chat.id) }
-                    .padding(horizontal = 14.dp, vertical = 13.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                    .clickable { onOpenChat(chat.id) },
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.tertiary,
             ) {
-                MomentAvatar(
-                    name = chat.profileName,
-                    imagePath = chat.profileImagePath,
-                    seed = chat.id.hashCode(),
-                    size = 58.dp,
-                )
-                Spacer(Modifier.width(13.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(chat.profileName, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        chat.initialMessages.lastOrNull()?.text ?: "New conversation",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        fontSize = 13.sp,
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    MomentAvatar(
+                        name = chat.profileName,
+                        imagePath = chat.profileImagePath,
+                        seed = chat.id.hashCode(),
+                        size = 58.dp,
                     )
+                    Spacer(Modifier.width(13.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            chat.profileName,
+                            color = MaterialTheme.colorScheme.onTertiary,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            chat.initialMessages.lastOrNull()?.text ?: "New conversation",
+                            color = MaterialTheme.colorScheme.onTertiary.copy(alpha = 0.72f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            fontSize = 13.sp,
+                        )
+                    }
+                    Text("›", fontSize = 28.sp, color = MaterialTheme.colorScheme.onTertiary)
                 }
-                Text("›", fontSize = 28.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.45f))
         }
     }
 }
 
 @Composable
-private fun StoryStrip(chats: List<SavedChat>) {
+private fun StoryStrip(chats: List<SavedChat>, onOpenChat: (String?) -> Unit) {
     Column {
         LazyRow(
             modifier = Modifier.fillMaxWidth(),
@@ -366,19 +430,28 @@ private fun StoryStrip(chats: List<SavedChat>) {
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             items(chats, key = { "story-${it.id}" }) { chat ->
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(76.dp)) {
-                    Box(
-                        modifier = Modifier
-                            .size(68.dp)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.width(76.dp).clickable { onOpenChat(chat.id) },
+                ) {
+                    val ringModifier = if (chat.showStoryRing) {
+                        Modifier
                             .background(
                                 androidx.compose.ui.graphics.Brush.linearGradient(
-                                    listOf(Color(0xFFFF65A3), Color(0xFFFFB33E), MomentAccent),
+                                    listOf(Color(0xFF777777), Color.White, MomentAccent),
                                 ),
                                 CircleShape,
                             )
                             .padding(3.dp)
                             .background(MaterialTheme.colorScheme.background, CircleShape)
-                            .padding(3.dp),
+                            .padding(3.dp)
+                    } else {
+                        Modifier.padding(6.dp)
+                    }
+                    Box(
+                        modifier = Modifier
+                            .size(68.dp)
+                            .then(ringModifier),
                     ) {
                         MomentAvatar(
                             name = chat.profileName,
@@ -449,7 +522,9 @@ private fun ChatScreen(
             }
         }
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 10.dp, top = 8.dp, end = 10.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             OutlinedTextField(
@@ -470,7 +545,13 @@ private fun ChatScreen(
                 shape = CircleShape,
                 contentPadding = PaddingValues(0.dp),
                 enabled = draft.isNotBlank(),
-            ) { Text("↑", fontSize = 22.sp) }
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_moment_action_share),
+                    contentDescription = "Send message",
+                    modifier = Modifier.size(23.dp),
+                )
+            }
         }
     }
 }
@@ -494,7 +575,7 @@ private fun MessageBubble(
                 bottomStart = if (message.fromActor) 20.dp else 5.dp,
                 bottomEnd = if (message.fromActor) 5.dp else 20.dp,
             ),
-            color = if (message.fromActor) Color(0xFF7154D8) else MaterialTheme.colorScheme.surfaceVariant,
+            color = if (message.fromActor) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
         ) {
             if (message.kind == MessageKind.TEXT) {
                 Text(
@@ -510,7 +591,15 @@ private fun MessageBubble(
                         modifier = Modifier.size(42.dp),
                         shape = CircleShape,
                         contentPadding = PaddingValues(0.dp),
-                    ) { Text(if (isPlaying) "Ⅱ" else "▶") }
+                    ) {
+                        Icon(
+                            painter = painterResource(
+                                if (isPlaying) R.drawable.ic_moment_pause else R.drawable.ic_moment_play,
+                            ),
+                            contentDescription = if (isPlaying) "Pause voice message" else "Play voice message",
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
                         LinearProgressIndicator(
@@ -544,12 +633,16 @@ private fun AccountScreen(modifier: Modifier = Modifier, onUninstall: () -> Unit
                 MomentAvatar("Moment", null, 41, 82.dp)
                 Spacer(Modifier.height(10.dp))
                 Text("Moment", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                Text("Version 0.2 production prop", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                Text(
+                    "Version ${BuildConfig.VERSION_NAME}",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 13.sp,
+                )
             }
         }
-        item { AccountRow("Notifications", "Allowed during filming") }
+        item { AccountRow("Notifications", "Alerts enabled") }
         item { AccountRow("Permissions", "Notifications and selected media") }
-        item { AccountRow("Storage & cache", "Local production content") }
+        item { AccountRow("Storage & cache", "Chats and personal data") }
         item {
             Spacer(Modifier.height(18.dp))
             Button(
@@ -621,7 +714,13 @@ private fun BlackoutScreen(onRecover: () -> Unit) {
         controller?.systemBarsBehavior =
             WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         controller?.hide(WindowInsetsCompat.Type.systemBars())
-        onDispose { controller?.show(WindowInsetsCompat.Type.systemBars()) }
+        onDispose {
+            window?.statusBarColor = AndroidColor.BLACK
+            window?.navigationBarColor = AndroidColor.BLACK
+            controller?.isAppearanceLightStatusBars = false
+            controller?.isAppearanceLightNavigationBars = false
+            controller?.show(WindowInsetsCompat.Type.systemBars())
+        }
     }
     BackHandler(enabled = true) { }
     Box(Modifier.fillMaxSize().background(Color.Black).testTag("blackout")) {

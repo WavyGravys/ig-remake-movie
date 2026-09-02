@@ -3,18 +3,22 @@ package com.tyler.scenegram.director
 import android.app.Application
 import android.os.SystemClock
 import android.speech.tts.TextToSpeech
+import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.tyler.scenegram.notifications.NotificationController
 import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 enum class AppScreen {
     REELS,
@@ -40,6 +44,7 @@ data class ChatMessageUi(
 data class AppUiState(
     val screen: AppScreen = AppScreen.REELS,
     val customPosts: List<CustomPost> = emptyList(),
+    val showPlaceholderVideos: Boolean = true,
     val chats: List<SavedChat> = emptyList(),
     val chatScenes: List<SavedChatScene> = emptyList(),
     val selectedChatId: String = MomentDefaults.ALEX_CHAT_ID,
@@ -76,6 +81,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         _state = MutableStateFlow(
             AppUiState(
                 customPosts = content.posts,
+                showPlaceholderVideos = preferences.getBoolean(KEY_SHOW_PLACEHOLDER_VIDEOS, true),
                 chats = content.chats,
                 chatScenes = content.chatScenes,
                 selectedChatId = initialChat.id,
@@ -115,11 +121,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun setShowPlaceholderVideos(show: Boolean) {
+        preferences.edit { putBoolean(KEY_SHOW_PLACEHOLDER_VIDEOS, show) }
+        _state.update { it.copy(showPlaceholderVideos = show) }
+    }
+
     fun selectSearchPost(postId: String?) {
         _state.update { it.copy(selectedSearchPostId = postId) }
     }
 
     fun openChat(chatId: String? = _state.value.selectedChatId) {
+        stopVoice()
         val chat = content.chats.firstOrNull { it.id == chatId } ?: content.chats.first()
         val messages = runtimeMessages.getOrPut(chat.id) { initialMessagesFor(chat) }
         _state.update {
@@ -137,6 +149,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun openDirector() = _state.update { it.copy(screen = AppScreen.DIRECTOR) }
 
     fun onBack() {
+        if (_state.value.screen == AppScreen.CHAT) stopVoice()
         _state.update { current ->
             val destination = when (current.screen) {
                 AppScreen.CHAT -> AppScreen.INBOX
@@ -223,7 +236,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun prepareUninstallScene() {
         cancelScript()
-        preferences.edit().putBoolean(KEY_BLACKOUT, false).apply()
+        preferences.edit { putBoolean(KEY_BLACKOUT, false) }
         _state.update {
             it.copy(
                 screen = AppScreen.ME,
@@ -412,10 +425,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
         _state.update { it.copy(contentStatus = "Importing post media…") }
         viewModelScope.launch {
-            runCatching {
-                val mediaPaths = request.sourceUris.map { contentStore.importMedia(it) }
-                val avatarPath = request.profileImageSourceUri?.let { contentStore.importMedia(it) }
-                CustomPost(
+            val importedPaths = mutableListOf<String>()
+            try {
+                val mediaPaths = request.sourceUris.map { sourceUri ->
+                    contentStore.importMedia(sourceUri).also(importedPaths::add)
+                }
+                val avatarPath = request.profileImageSourceUri?.let { sourceUri ->
+                    contentStore.importMedia(sourceUri).also(importedPaths::add)
+                }
+                val post = CustomPost(
                     id = UUID.randomUUID().toString(),
                     placement = request.placement,
                     mediaType = request.mediaType,
@@ -426,10 +444,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     likes = request.likes.coerceAtLeast(0),
                     comments = request.comments.coerceAtLeast(0),
                 )
-            }.onSuccess { post ->
-                content = content.copy(posts = content.posts + post)
-                persistContent("Post saved to ${post.placement.displayLabel()}")
-            }.onFailure { error ->
+                saveContent(
+                    updated = content.copy(posts = content.posts + post),
+                    status = "Post saved to ${post.placement.displayLabel()}",
+                )
+            } catch (error: CancellationException) {
+                cleanupFailedImports(importedPaths)
+                throw error
+            } catch (error: Exception) {
+                cleanupFailedImports(importedPaths)
                 _state.update { it.copy(contentStatus = error.message ?: "The media import failed") }
             }
         }
@@ -437,12 +460,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deletePost(postId: String) {
         val deleted = content.posts.firstOrNull { it.id == postId }
-        content = content.copy(posts = content.posts.filterNot { it.id == postId })
-        persistContent("Post deleted")
-        deleted?.let { post ->
-            viewModelScope.launch {
-                contentStore.deleteMedia(post.mediaPaths + listOfNotNull(post.profileImagePath))
-            }
+        if (deleted == null) {
+            _state.update { it.copy(contentStatus = "Post was already deleted") }
+            return
+        }
+        saveContent(
+            updated = content.copy(posts = content.posts.filterNot { it.id == postId }),
+            status = "Post deleted",
+        )
+        viewModelScope.launch {
+            contentStore.deleteMedia(deleted.mediaPaths + listOfNotNull(deleted.profileImagePath))
         }
     }
 
@@ -453,12 +480,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
         _state.update { it.copy(contentStatus = "Saving chat…") }
         viewModelScope.launch {
-            runCatching {
-                val avatarPath = request.profileImageSourceUri?.let { contentStore.importMedia(it) }
-                SavedChat(
+            val importedPaths = mutableListOf<String>()
+            try {
+                val avatarPath = request.profileImageSourceUri?.let { sourceUri ->
+                    contentStore.importMedia(sourceUri).also(importedPaths::add)
+                }
+                val chat = SavedChat(
                     id = UUID.randomUUID().toString(),
                     profileName = request.profileName.trim(),
                     profileImagePath = avatarPath,
+                    showStoryRing = request.showStoryRing,
                     initialMessages = request.initialMessages.map { message ->
                         SavedChatMessage(
                             id = UUID.randomUUID().toString(),
@@ -469,11 +500,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         )
                     },
                 )
-            }.onSuccess { chat ->
-                content = content.copy(chats = content.chats + chat)
+                saveContent(
+                    updated = content.copy(chats = content.chats + chat),
+                    status = "Person ${chat.profileName} saved",
+                )
                 runtimeMessages[chat.id] = initialMessagesFor(chat)
-                persistContent("Chat with ${chat.profileName} saved")
-            }.onFailure { error ->
+            } catch (error: CancellationException) {
+                cleanupFailedImports(importedPaths)
+                throw error
+            } catch (error: Exception) {
+                cleanupFailedImports(importedPaths)
                 _state.update { it.copy(contentStatus = error.message ?: "The chat could not be saved") }
             }
         }
@@ -557,7 +593,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun persistContent(status: String) {
-        contentStore.save(content)
+        saveContent(content, status)
+    }
+
+    private fun saveContent(updated: MomentContent, status: String) {
+        contentStore.save(updated)
+        content = updated
         _state.update {
             it.copy(
                 customPosts = content.posts,
@@ -590,14 +631,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             .flatten()
             .firstOrNull { it.id == messageId && it.kind == MessageKind.VOICE }
             ?: return
-        if (ttsReady) {
-            textToSpeech.speak(
-                message.text,
-                TextToSpeech.QUEUE_FLUSH,
-                null,
-                "moment-voice-$messageId",
-            )
-        }
+        if (!ttsReady) return
+        val speakResult = textToSpeech.speak(
+            message.text,
+            TextToSpeech.QUEUE_FLUSH,
+            null,
+            "moment-voice-$messageId",
+        )
+        if (speakResult == TextToSpeech.ERROR) return
         _state.update { it.copy(playingVoiceId = messageId, voiceProgress = 0f) }
         voiceJob = viewModelScope.launch {
             val steps = message.durationSeconds.coerceAtLeast(1) * 10
@@ -616,12 +657,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         cancelScript()
         stopVoice()
         NotificationController.cancelAll(getApplication())
-        preferences.edit().putBoolean(KEY_BLACKOUT, true).apply()
+        preferences.edit { putBoolean(KEY_BLACKOUT, true) }
         _state.update { it.copy(blackout = true) }
     }
 
     fun recoverFromBlackout() {
-        preferences.edit().putBoolean(KEY_BLACKOUT, false).apply()
+        preferences.edit { putBoolean(KEY_BLACKOUT, false) }
         _state.update { it.copy(blackout = false, screen = AppScreen.REELS) }
     }
 
@@ -680,6 +721,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
 
     private fun showNotification(chat: SavedChat, messageId: Long, preview: String) {
+        val current = _state.value
+        if (current.screen == AppScreen.CHAT && current.selectedChatId == chat.id) return
+
         NotificationController.showMessage(
             getApplication(),
             messageId.toInt(),
@@ -694,6 +738,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         voiceJob = null
         textToSpeech.stop()
         _state.update { it.copy(playingVoiceId = null, voiceProgress = 0f) }
+    }
+
+    private suspend fun cleanupFailedImports(paths: List<String>) {
+        if (paths.isEmpty()) return
+        withContext(NonCancellable) { contentStore.deleteMedia(paths) }
     }
 
     private fun textToSpeechLanguage() {
@@ -717,6 +766,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val MAIN_SCREENS = setOf(AppScreen.REELS, AppScreen.SEARCH, AppScreen.INBOX, AppScreen.ME)
         const val PREFERENCES = "scenegram_director"
         const val KEY_BLACKOUT = "blackout"
+        const val KEY_SHOW_PLACEHOLDER_VIDEOS = "show_placeholder_videos"
         const val WORDMARK_TAP_WINDOW_MS = 1_500L
         const val VOICE_DURATION_SECONDS = 7
         const val MAX_DELAY_SECONDS = 120

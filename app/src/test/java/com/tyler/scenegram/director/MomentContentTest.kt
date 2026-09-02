@@ -87,4 +87,12 @@ class MomentContentTest {
             message.copy(durationSeconds = 0)
         }
     }
+
+    @Test
+    fun `people may opt out of the glowing story ring`() {
+        val person = MomentDefaults.content.chats.first().copy(showStoryRing = false)
+
+        assertEquals(false, person.showStoryRing)
+        assertEquals(true, MomentDefaults.content.chats.last().showStoryRing)
+    }
 }

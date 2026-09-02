@@ -6,6 +6,107 @@ It does not connect to Instagram, require a real account, or use a backend. Use 
 
 The installed app is named **Moment** and uses a dark interface. The Android package name and the existing VS Code task names still use the older `com.tyler.scenegram` / `Scenegram:` development identifiers; those are not shown as the app name on camera.
 
+## Codex project context — read this first
+
+This section is the engineering handoff for future Codex chats. Treat it as the current source of truth before planning or editing. Confirm the relevant implementation before making changes, preserve unrelated user work, and update this section whenever behavior or architecture materially changes.
+
+### Product intent and decisions that must be preserved
+
+- Moment is a purpose-built, offline film prop—not a social network, Instagram client, learning exercise, or production backend.
+- Speed, deterministic playback, easy on-device programming, and a convincing filmed result matter more than general-purpose architecture.
+- The visible app name is **Moment**. Keep the existing application ID and Kotlin package, `com.tyler.scenegram`, unless the user explicitly requests a migration; retaining it allows debug APK updates to preserve device data.
+- The app is portrait-only and globally dark. The current palette intentionally uses a warm near-black background (`#151219`), dark card surfaces (`#17151C`), lavender accent (`#B99CFF`), and selected containers close to `#4A4458`. Do not replace it with dynamic/system colors.
+- The filmed bottom navigation has exactly four icon-only destinations: Reels, Search, Inbox, and Me. There is no Feed tab and no text under the icons.
+- Reels is one vertical pager mixing placeholder/imported videos with the image posts and horizontal carousels formerly associated with Feed.
+- Search has exactly two programmable collections: the default collection for a blank query and a second collection for every nonblank query. When a result is opened, the search field and query remain visible and editable.
+- Stories live at the top of Inbox. Me opens **My Account**. The old settings icon/page must not return.
+- Handles are derived from display names with `momentHandle`: lowercase words joined by dots and prefixed with `@` (`Alex Morgan` → `@alex.morgan`).
+- Director controls are hidden from filmed navigation and open after five quick taps on the **Moment** title on Reels.
+- The ordinary chat UI must never expose Director information. In particular, it must not show actor-line guides, prefilled actor dialogue, reply countdowns, “waiting for…” labels, scene names, or other staging cues.
+- Chat-scene steps contain only an incoming reply, its type, and the delay after the app user sends any nonblank message. There is deliberately no actor-line-guide field. Do not reintroduce it.
+- The staged uninstall is deliberately fake. It displays an in-app confirmation and then a full black screen; it must not invoke Android's actual package uninstaller.
+- One earlier request arrived truncated as `change the…`. Nothing was inferred or implemented for that unknown item. Ask the user rather than guessing if it becomes relevant.
+
+### Current implementation status (verified September 1, 2026)
+
+The following flows have been implemented and exercised on the A51-like emulator and the connected Galaxy A51 test phone:
+
+- mixed vertical videos and horizontally swipeable carousels;
+- imported phone images copied into private storage and rendered after app restarts and APK updates;
+- blank-query and nonblank-query Search collections, including retained editable query text in the opened-post view;
+- Inbox stories and persistent custom chats with profile metadata and ordered initial history;
+- reusable saved/deletable chat scenes with optional delayed initial incoming messages;
+- app-user-send-triggered text or playable voice replies with programmed delays;
+- Android message notifications routed to the correct chat;
+- voice playback using Android's on-device text-to-speech engine and the programmed visible duration;
+- fake uninstall confirmation, persistent blackout, and lower-left three-second recovery gesture;
+- clean filmed chat behavior with no actor hints or reply-timing indicators;
+- the production icon artwork, extracted from the supplied Moment SVG mockups into individually named Android vector resources for navigation, search, post actions, sending, and playback.
+
+The latest full verification command completed successfully with 11 JVM unit tests, zero failures, and Android lint passing. The debug APK is at `app/build/outputs/apk/debug/app-debug.apk`.
+
+### Technology and build configuration
+
+- Native Android app written in Kotlin with Jetpack Compose and Material 3.
+- Android Gradle Plugin 9.3.1, Kotlin 2.4.10, Compose BOM 2026.08.00, coroutines 1.11.0.
+- Java/JVM 17, `compileSdk = 37`, `targetSdk = 37`, `minSdk = 26`.
+- No server, Firebase project, login, database service, or network permission is used.
+- Media selected through Android's Storage Access Framework is copied into app-private storage; the app does not keep depending on the original picker URI.
+- Imported videos use an Android `VideoView`; imported images are sampled, EXIF-oriented, and rendered with Compose. Voice messages use Android `TextToSpeech` rather than imported audio files.
+
+### Code map
+
+| File | Responsibility |
+| --- | --- |
+| `app/src/main/java/com/tyler/scenegram/ui/SceneGramApp.kt` | Root Material theme, screen routing, icon-only navigation, Inbox/chat/account UI, uninstall confirmation, and blackout/recovery UI. |
+| `app/src/main/java/com/tyler/scenegram/ui/MomentPosts.kt` | Unified Reels/Search presentation, mixed built-in and custom posts, vertical/horizontal pagers, media rendering, thumbnails, avatars, count formatting, and the visual palette accent. |
+| `app/src/main/java/com/tyler/scenegram/ui/DirectorScreen.kt` | Scrollable on-device post/chat/chat-scene editor, media pickers, saved-item summaries, scene start/delete controls, and notification tools. |
+| `app/src/main/java/com/tyler/scenegram/director/AppViewModel.kt` | App state, navigation, hidden-title gesture, runtime chat messages, scene sequencing, delay jobs, TTS playback, persistence coordination, notifications, and blackout state. |
+| `app/src/main/java/com/tyler/scenegram/director/MomentContent.kt` | Persistent domain models and invariants for posts, chats, message kinds, and reply-only scene steps; also contains handle generation and default chats. |
+| `app/src/main/java/com/tyler/scenegram/director/MomentContentStore.kt` | Versioned JSON encoding/decoding in SharedPreferences plus safe import/deletion of private media copies. Invalid individual JSON entries are skipped; old scene JSON may contain an ignored `actorLine` field. |
+| `app/src/main/java/com/tyler/scenegram/notifications/NotificationController.kt` | High-importance **Moment messages** notification channel, message notifications, and chat-ID deep links. |
+| `app/src/main/java/com/tyler/scenegram/model/PlaceholderContent.kt` | Built-in placeholder profiles, videos, image posts/carousels, and the legacy rehearsal content. |
+| `app/src/main/java/com/tyler/scenegram/MainActivity.kt` | Compose host and notification-intent forwarding. |
+| `app/src/main/res/drawable/ic_moment_*.xml` | Individually named, scalable Moment icon vectors used by Compose instead of placeholder text glyphs. |
+| `app/src/test/java/com/tyler/scenegram/director/MomentContentTest.kt` | Domain invariants for handles, post media, ordered scene replies, and voice durations. |
+| `.vscode/tasks.json` | Shared build, test, install, launch, emulator, notification, screenshot, and logcat tasks. |
+| `scripts/*.ps1` | A51 AVD creation/start, screenshot capture, and deterministic emulator smoke test. |
+
+There are older internal names such as `SceneGramApp`, `SceneGramApplication`, `Theme.SceneGram`, `FeedPost`, and `Scenegram:` task labels. They are implementation identifiers only. Do not perform a risky package-wide rename merely for cosmetic consistency.
+
+### Runtime and persistence model
+
+- Director content is stored as schema-versioned JSON under SharedPreferences file `moment_director_content`, key `content_v1`.
+- Imported media is copied to the app-private `files/moment-media` directory. Deleting a custom post deletes its copied post media/avatar; deleting a custom chat deletes its copied avatar and all scenes assigned to it.
+- Blackout state is stored separately in SharedPreferences file `scenegram_director`, key `blackout`, so the black screen survives ordinary activity/app restarts.
+- Posts, chats, chat definitions, scenes, and imported media persist through normal restarts and `adb install -r` APK updates.
+- Runtime messages delivered while playing a scene are intentionally in memory. Restarting the process restores a chat's programmed initial history, not the completed take.
+- Timed cues use `viewModelScope` coroutine jobs. They require the process to remain alive and do not survive force-stop, actual uninstall, or Android process death. Keep Moment open/foregrounded for a take.
+- Starting a saved scene cancels existing cue/TTS work, clears active notifications, resets the chosen conversation to its programmed initial history, optionally schedules the initial incoming message, and arms reply step zero.
+- Each nonblank app-user send advances exactly one armed step. Sends from a different chat cannot advance the active scene. While a reply is pending, another send does not consume another step.
+- A reply can be text or voice. Voice `text` is the phrase TTS speaks; `durationSeconds` controls the displayed/progress duration. The notification preview says `Voice message · 0:SS` rather than exposing the spoken text.
+- Starting/deleting/cancelling a scene updates Director status only. The filmed chat surface contains no scene status or timer UI.
+
+### Safe workflow for future changes
+
+1. Read this handoff and the relevant files before editing; do not assume the old Feed/actor-guide design still exists.
+2. Preserve the package/application ID and persistent JSON compatibility unless the user explicitly authorizes a migration.
+3. Treat media and SharedPreferences already present on the emulator/phone as user data. Do not clear app data as a routine test step.
+4. Use `adb install -r` or the provided install tasks to preserve programmed content.
+5. After model changes, verify old stored JSON still loads. Optional fields need defaults, and obsolete fields should be ignored safely.
+6. For chat-scene changes, test both text and voice replies, the no-hint filmed chat, notification routing, cancellation, and repeated scene starts.
+7. For visual changes, inspect a real emulator screenshot; Compose previews alone do not reproduce the A51-like density.
+8. Finish with `:app:assembleDebug`, `:app:testDebugUnitTest`, and `:app:lintDebug`.
+
+### Known boundaries and likely future work
+
+- Placeholder names, profile pictures, images, and videos are expected to receive a separate visual-content pass.
+- Search intentionally maps all nonblank queries to one alternate programmed set; it is not a real text-search engine.
+- Voice messages are synthesized from programmed text. Importing prerecorded audio is not currently implemented.
+- There is no Director content export/import, backup, cloud sync, or cross-device transfer. Clearing storage or genuinely uninstalling destroys programmed content.
+- The emulator approximates A51 geometry and Android version but cannot reproduce Samsung One UI, AMOLED characteristics, the camera cutout, notification shade, keyboard, or Exynos/Mali behavior.
+- Pending delayed cues are not durable background alarms. A future request for process-death-safe scheduling would require a deliberate design change such as WorkManager or AlarmManager.
+
 ## App layout
 
 The bottom bar contains four icon-only tabs:

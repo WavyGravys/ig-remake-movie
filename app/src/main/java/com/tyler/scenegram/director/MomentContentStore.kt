@@ -1,8 +1,9 @@
 package com.tyler.scenegram.director
 
 import android.content.Context
-import android.net.Uri
 import android.webkit.MimeTypeMap
+import androidx.core.content.edit
+import androidx.core.net.toUri
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
@@ -19,11 +20,11 @@ class MomentContentStore(private val context: Context) {
     }
 
     fun save(content: MomentContent) {
-        preferences.edit().putString(KEY_CONTENT, encode(content).toString()).apply()
+        preferences.edit { putString(KEY_CONTENT, encode(content).toString()) }
     }
 
     suspend fun importMedia(sourceUri: String): String = withContext(Dispatchers.IO) {
-        val uri = Uri.parse(sourceUri)
+        val uri = sourceUri.toUri()
         val mimeType = context.contentResolver.getType(uri)
         val extension = MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType)
             ?.takeIf(String::isNotBlank)
@@ -77,6 +78,7 @@ class MomentContentStore(private val context: Context) {
         put("id", chat.id)
         put("profileName", chat.profileName)
         put("profileImagePath", chat.profileImagePath)
+        put("showStoryRing", chat.showStoryRing)
         put("initialMessages", JSONArray().apply {
             chat.initialMessages.forEach { message ->
                 put(JSONObject().apply {
@@ -139,6 +141,7 @@ class MomentContentStore(private val context: Context) {
         id = value.getString("id"),
         profileName = value.getString("profileName"),
         profileImagePath = value.nullableString("profileImagePath"),
+        showStoryRing = value.optBoolean("showStoryRing", true),
         initialMessages = value.optJSONArray("initialMessages").objects { message ->
             SavedChatMessage(
                 id = message.getString("id"),
